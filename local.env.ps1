@@ -1,0 +1,6 @@
+$env:SPRING_PROFILES_ACTIVE="dev"
+$env:DB_URL="jdbc:postgresql://localhost:5432/cymelle"
+$env:DB_USER="postgres"
+$env:DB_PASSWORD="postgres"
+$env:JWT_SECRET="sdgfijjh3466iu345g87g08c24g7204gr803g30587ghh35807fg39074fvg80493745gf082b507807g807fgf"
+$env:JWT_EXPIRY_MINUTES="60"
