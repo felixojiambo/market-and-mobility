@@ -6,12 +6,16 @@ import com.cymelle.app.auth.dto.RefreshRequest;
 import com.cymelle.app.auth.dto.RegisterRequest;
 import com.cymelle.app.common.exception.ConflictException;
 import com.cymelle.app.common.exception.NotFoundException;
+import com.cymelle.app.security.CustomUserDetails;
 import com.cymelle.app.security.JwtService;
 import com.cymelle.app.users.AppUser;
 import com.cymelle.app.users.Role;
 import com.cymelle.app.users.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +27,8 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RedisRefreshTokenStore refreshTokenStore;
+
+    private final AuthenticationManager authenticationManager;
 
     @Value("${app.jwt.access-expiry-minutes}")
     private long accessExpiryMinutes;
@@ -44,14 +50,22 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        AppUser user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new NotFoundException("Invalid credentials"));
+        try {
+            var authToken = new UsernamePasswordAuthenticationToken(
+                    request.getEmail(),
+                    request.getPassword()
+            );
 
-        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            authenticationManager.authenticate(authToken);
+
+            AppUser user = userRepository.findByEmail(request.getEmail())
+                    .orElseThrow(() -> new NotFoundException("Invalid credentials"));
+
+            return issueTokens(user);
+
+        } catch (AuthenticationException ex) {
             throw new NotFoundException("Invalid credentials");
         }
-
-        return issueTokens(user);
     }
 
     public AuthResponse refresh(RefreshRequest request) {
