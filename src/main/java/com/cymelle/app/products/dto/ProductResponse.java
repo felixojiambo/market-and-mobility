@@ -1,10 +1,7 @@
 package com.cymelle.app.products.dto;
 
 import com.cymelle.app.products.Product;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -22,15 +19,15 @@ public class ProductResponse {
     private String category;
     private Instant createdAt;
 
-    public static ProductResponse from(Product product) {
+    public static ProductResponse from(Product p) {
         return ProductResponse.builder()
-                .id(product.getId())
-                .name(product.getName())
-                .description(product.getDescription())
-                .price(product.getPrice())
-                .stockQuantity(product.getStockQuantity())
-                .category(product.getCategory())
-                .createdAt(product.getCreatedAt())
+                .id(p.getId())
+                .name(p.getName())
+                .description(p.getDescription())
+                .price(p.getPrice())
+                .stockQuantity(p.getStockQuantity())
+                .category(p.getCategory())
+                .createdAt(p.getCreatedAt())
                 .build();
     }
 }

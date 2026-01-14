@@ -16,12 +16,14 @@ public class ProductService {
     private final ProductRepository productRepository;
 
     public ProductResponse create(ProductCreateRequest req) {
-        Product p = new Product();
-        p.setName(req.getName());
-        p.setDescription(req.getDescription());
-        p.setPrice(req.getPrice());
-        p.setStockQuantity(req.getStockQuantity());
-        p.setCategory(req.getCategory());
+        Product p = Product.builder()
+                .name(req.getName())
+                .description(req.getDescription())
+                .price(req.getPrice())
+                .stockQuantity(req.getStockQuantity())
+                .category(req.getCategory())
+                .build();
+
         productRepository.save(p);
         return ProductResponse.from(p);
     }
@@ -35,6 +37,7 @@ public class ProductService {
         p.setPrice(req.getPrice());
         p.setStockQuantity(req.getStockQuantity());
         p.setCategory(req.getCategory());
+
         productRepository.save(p);
         return ProductResponse.from(p);
     }
@@ -46,7 +49,7 @@ public class ProductService {
         productRepository.deleteById(id);
     }
 
-    public ProductResponse get(Long id) {
+    public ProductResponse getById(Long id) {
         Product p = productRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Product not found"));
         return ProductResponse.from(p);
@@ -58,19 +61,27 @@ public class ProductService {
 
     public Page<ProductResponse> search(String name, String category, Pageable pageable) {
         boolean hasName = name != null && !name.isBlank();
-        boolean hasCat = category != null && !category.isBlank();
+        boolean hasCategory = category != null && !category.isBlank();
 
-        if (hasName && hasCat) {
+        if (hasName && hasCategory) {
             return productRepository
                     .findByNameContainingIgnoreCaseAndCategoryIgnoreCase(name, category, pageable)
                     .map(ProductResponse::from);
         }
+
         if (hasName) {
-            return productRepository.findByNameContainingIgnoreCase(name, pageable).map(ProductResponse::from);
+            return productRepository
+                    .findByNameContainingIgnoreCase(name, pageable)
+                    .map(ProductResponse::from);
         }
-        if (hasCat) {
-            return productRepository.findByCategoryIgnoreCase(category, pageable).map(ProductResponse::from);
+
+        if (hasCategory) {
+            return productRepository
+                    .findByCategoryIgnoreCase(category, pageable)
+                    .map(ProductResponse::from);
         }
-        return productRepository.findAll(pageable).map(ProductResponse::from);
+
+        // if no filters, behave like list
+        return list(pageable);
     }
 }
