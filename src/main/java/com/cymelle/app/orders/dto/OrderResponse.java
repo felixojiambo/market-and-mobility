@@ -3,10 +3,7 @@ package com.cymelle.app.orders.dto;
 import com.cymelle.app.orders.Order;
 import com.cymelle.app.orders.OrderStatus;
 import com.cymelle.app.orders.PaymentStatus;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -17,6 +14,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OrderResponse {
+
     private Long id;
     private Long customerId;
     private OrderStatus status;

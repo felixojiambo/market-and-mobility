@@ -35,4 +35,12 @@ public class OrderController {
     public OrderResponse updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateOrderStatusRequest req) {
         return orderService.updateStatus(id, req);
     }
+
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public OrderResponse placeOrder(@Valid @RequestBody CreateOrderRequest request) {
+        return orderService.placeOrder(request);
+    }
+
 }

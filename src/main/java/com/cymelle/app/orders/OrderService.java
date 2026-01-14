@@ -1,63 +1,109 @@
 package com.cymelle.app.orders;
 
+import com.cymelle.app.common.exception.ConflictException;
 import com.cymelle.app.common.exception.NotFoundException;
+import com.cymelle.app.orders.dto.CreateOrderRequest;
 import com.cymelle.app.orders.dto.OrderResponse;
-import com.cymelle.app.orders.dto.UpdateOrderStatusRequest;
+import com.cymelle.app.products.Product;
+import com.cymelle.app.products.ProductRepository;
 import com.cymelle.app.security.CurrentUser;
 import com.cymelle.app.users.AppUser;
+import com.cymelle.app.users.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class OrderService {
 
     private final OrderRepository orderRepository;
+    private final ProductRepository productRepository;
+    private final UserRepository userRepository;
 
-    public OrderResponse get(Long id) {
-        AppUser actor = CurrentUser.require();
-        Order order = orderRepository.findById(id).orElseThrow(() -> new NotFoundException("Order not found"));
-        OrderAuthorization.requireOwnerOrAdmin(order, actor);
-        return OrderResponse.from(order);
-    }
+    @Transactional
+    public OrderResponse placeOrder(CreateOrderRequest request) {
 
-    /**
-     * Search rules:
-     * - ADMIN: can filter by any userId + status
-     * - CUSTOMER: userId is forced to self; status optional
-     */
-    public Page<OrderResponse> search(Long userId, OrderStatus status, Pageable pageable) {
-        AppUser actor = CurrentUser.require();
-
-        Long effectiveUserId = actor.getRole() == com.cymelle.app.users.Role.ADMIN ? userId : actor.getId();
-
-        if (effectiveUserId != null && status != null) {
-            return orderRepository.findByCustomerIdAndStatus(effectiveUserId, status, pageable).map(OrderResponse::from);
+        if (request.getItems() == null || request.getItems().isEmpty()) {
+            throw new ConflictException("Order items must not be empty");
         }
-        if (effectiveUserId != null) {
-            return orderRepository.findByCustomerId(effectiveUserId, pageable).map(OrderResponse::from);
-        }
-        if (status != null) {
-            // only ADMIN should reach here (customer never has null effectiveUserId)
-            return orderRepository.findByStatus(status, pageable).map(OrderResponse::from);
-        }
-        // ADMIN listing all orders
-        if (actor.getRole().name().equals("ADMIN")) {
-            return orderRepository.findAll(pageable).map(OrderResponse::from);
-        }
-        // customer fallback (shouldn't happen)
-        return orderRepository.findByCustomerId(actor.getId(), pageable).map(OrderResponse::from);
-    }
 
-    @PreAuthorize("hasRole('ADMIN')")
-    public OrderResponse updateStatus(Long id, UpdateOrderStatusRequest req) {
-        Order order = orderRepository.findById(id).orElseThrow(() -> new NotFoundException("Order not found"));
-        OrderStatusTransitions.validate(order.getStatus(), req.getStatus());
-        order.setStatus(req.getStatus());
-        orderRepository.save(order);
-        return OrderResponse.from(order);
+        Long customerId = CurrentUser.id();
+        AppUser customer = userRepository.findById(customerId)
+                .orElseThrow(() -> new NotFoundException("User not found"));
+
+        // collect product IDs
+        List<Long> productIds = request.getItems().stream()
+                .map(i -> i.getProductId())
+                .distinct()
+                .toList();
+
+        // lock product rows for update (prevents overselling)
+        List<Product> lockedProducts = productRepository.findAllByIdInForUpdate(productIds);
+
+        Map<Long, Product> productMap = lockedProducts.stream()
+                .collect(Collectors.toMap(Product::getId, Function.identity()));
+
+        // ensure all exist
+        for (Long pid : productIds) {
+            if (!productMap.containsKey(pid)) {
+                throw new NotFoundException("Product not found: " + pid);
+            }
+        }
+
+        // aggregate quantities per product (handles duplicates in request)
+        Map<Long, Integer> qtyByProductId = new HashMap<>();
+        request.getItems().forEach(item -> {
+            int qty = Optional.ofNullable(item.getQuantity()).orElse(0);
+            if (qty <= 0) throw new ConflictException("quantity must be >= 1");
+            qtyByProductId.merge(item.getProductId(), qty, Integer::sum);
+        });
+
+        // check stock + compute total
+        BigDecimal total = BigDecimal.ZERO;
+
+        for (Map.Entry<Long, Integer> e : qtyByProductId.entrySet()) {
+            Product p = productMap.get(e.getKey());
+            int requestedQty = e.getValue();
+
+            if (p.getStockQuantity() < requestedQty) {
+                throw new ConflictException("Insufficient stock for productId=" + p.getId());
+            }
+
+            BigDecimal line = p.getPrice().multiply(BigDecimal.valueOf(requestedQty));
+            total = total.add(line);
+        }
+
+        // create order
+        Order order = new Order();
+        order.setCustomer(customer);
+        order.setStatus(OrderStatus.PENDING);
+        order.setPaymentStatus(PaymentStatus.PENDING);
+        order.setTotalCost(total);
+
+        // create items + deduct stock
+        for (Map.Entry<Long, Integer> e : qtyByProductId.entrySet()) {
+            Product p = productMap.get(e.getKey());
+            int requestedQty = e.getValue();
+
+            // deduct stock (safe because locked)
+            p.setStockQuantity(p.getStockQuantity() - requestedQty);
+
+            OrderItem oi = new OrderItem();
+            oi.setProduct(p);
+            oi.setQuantity(requestedQty);
+            oi.setUnitPriceAtPurchase(p.getPrice());
+            order.addItem(oi);
+        }
+
+        // save order (cascade saves items)
+        Order saved = orderRepository.save(order);
+
+        return OrderResponse.from(saved);
     }
 }

@@ -2,10 +2,7 @@ package com.cymelle.app.orders.dto;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.util.List;
 
@@ -15,6 +12,7 @@ import java.util.List;
 @AllArgsConstructor
 public class CreateOrderRequest {
 
+    @Valid
     @NotEmpty(message = "items must not be empty")
-    private List<@Valid OrderItemRequest> items;
+    private List<OrderItemRequest> items;
 }
