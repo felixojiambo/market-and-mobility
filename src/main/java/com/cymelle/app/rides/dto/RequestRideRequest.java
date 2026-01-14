@@ -1,12 +1,7 @@
 package com.cymelle.app.rides.dto;
 
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import jakarta.validation.constraints.*;
+import lombok.*;
 
 import java.math.BigDecimal;
 
@@ -20,9 +15,11 @@ public class RequestRideRequest {
     private Long driverId;
 
     @NotBlank(message = "pickupLocation is required")
+    @Size(max = 255, message = "pickupLocation must be at most 255 chars")
     private String pickupLocation;
 
     @NotBlank(message = "dropoffLocation is required")
+    @Size(max = 255, message = "dropoffLocation must be at most 255 chars")
     private String dropoffLocation;
 
     @NotNull(message = "fare is required")

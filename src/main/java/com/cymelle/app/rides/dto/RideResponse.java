@@ -2,10 +2,7 @@ package com.cymelle.app.rides.dto;
 
 import com.cymelle.app.rides.Ride;
 import com.cymelle.app.rides.RideStatus;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -15,9 +12,10 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RideResponse {
+
     private Long id;
     private Long userId;
-    private Long driverId;
+    private Long driverId; // nullable
     private String pickupLocation;
     private String dropoffLocation;
     private BigDecimal fare;
@@ -28,7 +26,7 @@ public class RideResponse {
         return RideResponse.builder()
                 .id(ride.getId())
                 .userId(ride.getUser().getId())
-                .driverId(ride.getDriver() != null ? ride.getDriver().getId() : null)
+                .driverId(ride.getDriver() == null ? null : ride.getDriver().getId())
                 .pickupLocation(ride.getPickupLocation())
                 .dropoffLocation(ride.getDropoffLocation())
                 .fare(ride.getFare())
