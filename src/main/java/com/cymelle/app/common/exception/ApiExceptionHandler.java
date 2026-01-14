@@ -1,9 +1,9 @@
 package com.cymelle.app.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -12,65 +12,99 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.time.Instant;
 import java.util.List;
 
+@Slf4j
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    // -------------------------
+    // 400 — Validation errors
+    // -------------------------
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
-        List<ApiError.FieldViolation> fields = ex.getBindingResult()
+    public ResponseEntity<ErrorResponse> handleValidation(
+            MethodArgumentNotValidException ex,
+            HttpServletRequest request
+    ) {
+
+        List<FieldErrorResponse> fieldErrors = ex.getBindingResult()
                 .getFieldErrors()
                 .stream()
-                .map(this::toViolation)
+                .map(this::toFieldError)
                 .toList();
 
-        ApiError body = ApiError.builder()
+        ErrorResponse response = ErrorResponse.builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.BAD_REQUEST.value())
                 .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
                 .message("Validation failed")
                 .path(request.getRequestURI())
-                .fieldErrors(fields)
+                .fieldErrors(fieldErrors)
                 .build();
 
-        return ResponseEntity.badRequest().body(body);
+        return ResponseEntity.badRequest().body(response);
     }
 
-    @ExceptionHandler(ConflictException.class)
-    public ResponseEntity<ApiError> handleConflict(ConflictException ex, HttpServletRequest request) {
-        return build(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI());
+    private FieldErrorResponse toFieldError(FieldError fieldError) {
+        return FieldErrorResponse.builder()
+                .field(fieldError.getField())
+                .message(fieldError.getDefaultMessage())
+                .build();
     }
 
+    // -------------------------
+    // 404 — Not found
+    // -------------------------
     @ExceptionHandler(NotFoundException.class)
-    public ResponseEntity<ApiError> handleNotFound(NotFoundException ex, HttpServletRequest request) {
-        return build(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI());
+    public ResponseEntity<ErrorResponse> handleNotFound(
+            NotFoundException ex,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
     }
 
-    @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiError> handleForbidden(AccessDeniedException ex, HttpServletRequest request) {
-        return build(HttpStatus.FORBIDDEN, "Forbidden", request.getRequestURI());
+    // -------------------------
+    // 409 — Conflict
+    // -------------------------
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ErrorResponse> handleConflict(
+            ConflictException ex,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
     }
 
+    // -------------------------
+    // 500 — Fallback (safety net)
+    // -------------------------
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiError> handleGeneric(Exception ex, HttpServletRequest request) {
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error", request.getRequestURI());
+    public ResponseEntity<ErrorResponse> handleGeneric(
+            Exception ex,
+            HttpServletRequest request
+    ) {
+        log.error("Unhandled exception", ex);
+
+        return build(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "Unexpected server error",
+                request
+        );
     }
 
-    private ApiError.FieldViolation toViolation(FieldError fe) {
-        return ApiError.FieldViolation.builder()
-                .field(fe.getField())
-                .message(fe.getDefaultMessage())
-                .build();
-    }
-
-    private ResponseEntity<ApiError> build(HttpStatus status, String message, String path) {
-        ApiError body = ApiError.builder()
+    // -------------------------
+    // Helper
+    // -------------------------
+    private ResponseEntity<ErrorResponse> build(
+            HttpStatus status,
+            String message,
+            HttpServletRequest request
+    ) {
+        ErrorResponse response = ErrorResponse.builder()
                 .timestamp(Instant.now())
                 .status(status.value())
                 .error(status.getReasonPhrase())
                 .message(message)
-                .path(path)
-                .fieldErrors(null)
+                .path(request.getRequestURI())
                 .build();
-        return ResponseEntity.status(status).body(body);
+
+        return ResponseEntity.status(status).body(response);
     }
 }
