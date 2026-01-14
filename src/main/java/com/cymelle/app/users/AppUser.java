@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 @Entity
-@Table(name = "app_users")
+@Table(name = "users")
 @Getter
 @Setter
 public class AppUser {
@@ -17,7 +17,10 @@ public class AppUser {
 
     private String email;
     private String passwordHash;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private Role role;
+
     private Instant createdAt;
 
     protected AppUser() {}
