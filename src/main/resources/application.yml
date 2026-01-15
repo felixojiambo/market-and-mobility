@@ -3,10 +3,13 @@ spring:
     name: market-and-mobility
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      repositories:
+        enabled: false   # ✅ disables Redis repo scanning (removes those warnings)
 
 server:
   port: 8080
@@ -16,3 +19,9 @@ app:
     secret: ${JWT_SECRET:dev-secret-to-be-changed-felix}
     access-expiry-minutes: ${JWT_ACCESS_EXPIRY_MINUTES:60}
     refresh-expiry-days: ${JWT_REFRESH_EXPIRY_DAYS:14}
+
+springdoc:
+  api-docs:
+    enabled: true        # dev default
+  swagger-ui:
+    enabled: true        # dev default
