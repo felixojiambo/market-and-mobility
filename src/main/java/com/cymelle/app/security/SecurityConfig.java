@@ -12,12 +12,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.http.HttpMethod;
 
-import static java.lang.invoke.VarHandle.AccessMode.GET;
 
 @Configuration
 @EnableMethodSecurity
 @RequiredArgsConstructor
+
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
@@ -26,8 +27,7 @@ public class SecurityConfig {
 
     @Bean
     public AuthenticationManager authenticationManager() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder);
         return new ProviderManager(provider);
     }
@@ -46,7 +46,7 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**"
                         ).permitAll()
-                        .requestMatchers(GET, "/api/v1/products/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
                         .anyRequest().authenticated()
                 );
 

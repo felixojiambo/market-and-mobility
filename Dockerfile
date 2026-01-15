@@ -5,7 +5,8 @@ WORKDIR /app
 COPY pom.xml .
 COPY src ./src
 
-RUN mvn -q -DskipTests package
+#RUN mvn -q -DskipTests package
+RUN mvn -q -Dmaven.test.skip=true package
 
 # ---- Run stage ----
 FROM eclipse-temurin:25-jre

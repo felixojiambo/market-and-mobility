@@ -10,7 +10,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import com.cymelle.app.orders.dto.PayOrderRequest;
 
+@Tag(name="Orders")
 @RestController
 @RequestMapping("/api/v1/orders")
 @RequiredArgsConstructor
@@ -18,20 +21,21 @@ public class OrderController {
 
     private final OrderService orderService;
 
-    // 9.1 Place order
+    // (Idempotency required)
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public OrderResponse placeOrder(@Valid @RequestBody CreateOrderRequest request) {
-        return orderService.placeOrder(request);
+    public OrderResponse placeOrder(
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody CreateOrderRequest request
+    ) {
+        return orderService.placeOrder(request, idempotencyKey);
     }
 
-    // 9.2 View order (owner/admin)
     @GetMapping("/{id}")
     public OrderResponse getOrder(@PathVariable Long id) {
         return orderService.getOrder(id);
     }
 
-    // 9.3 Search orders (paginated)
     @GetMapping
     public Page<OrderResponse> searchOrders(
             @RequestParam(required = false) OrderStatus status,
@@ -41,7 +45,6 @@ public class OrderController {
         return orderService.searchOrders(userId, status, pageable);
     }
 
-    // 9.4 Update status (admin)
     @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{id}/status")
     public OrderResponse updateOrderStatus(
@@ -49,5 +52,10 @@ public class OrderController {
             @Valid @RequestBody UpdateOrderStatusRequest request
     ) {
         return orderService.updateOrderStatus(id, request);
+    }
+
+    @PostMapping("/{id}/pay")
+    public OrderResponse pay(@PathVariable Long id, @RequestBody(required = false) PayOrderRequest request) {
+        return orderService.payOrder(id, request);
     }
 }

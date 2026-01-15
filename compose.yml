@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:18
+    image: postgres:18-alpine
     container_name: market_mobility_postgres
     restart: unless-stopped
     environment:
@@ -15,7 +15,7 @@ services:
       - mm_net
 
   redis:
-    image: redis:7
+    image: redis:8-alpine
     container_name: market_mobility_redis
     restart: unless-stopped
     ports:

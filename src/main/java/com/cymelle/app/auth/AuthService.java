@@ -1,12 +1,9 @@
 package com.cymelle.app.auth;
 
-import com.cymelle.app.auth.dto.AuthResponse;
-import com.cymelle.app.auth.dto.LoginRequest;
-import com.cymelle.app.auth.dto.RefreshRequest;
-import com.cymelle.app.auth.dto.RegisterRequest;
+import com.cymelle.app.auth.dto.*;
 import com.cymelle.app.common.exception.ConflictException;
 import com.cymelle.app.common.exception.NotFoundException;
-import com.cymelle.app.security.CustomUserDetails;
+import com.cymelle.app.common.exception.UnauthorizedException;
 import com.cymelle.app.security.JwtService;
 import com.cymelle.app.users.AppUser;
 import com.cymelle.app.users.Role;
@@ -27,7 +24,6 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RedisRefreshTokenStore refreshTokenStore;
-
     private final AuthenticationManager authenticationManager;
 
     @Value("${app.jwt.access-expiry-minutes}")
@@ -42,7 +38,6 @@ public class AuthService {
         }
 
         String hash = passwordEncoder.encode(request.getPassword());
-
         AppUser user = AppUser.create(request.getEmail(), hash, Role.CUSTOMER);
         userRepository.save(user);
 
@@ -58,22 +53,23 @@ public class AuthService {
 
             authenticationManager.authenticate(authToken);
 
+            // Should exist if authentication passed, but still safe:
             AppUser user = userRepository.findByEmail(request.getEmail())
-                    .orElseThrow(() -> new NotFoundException("Invalid credentials"));
+                    .orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
 
             return issueTokens(user);
 
         } catch (AuthenticationException ex) {
-            throw new NotFoundException("Invalid credentials");
+            throw new UnauthorizedException("Invalid credentials");
         }
     }
 
     public AuthResponse refresh(RefreshRequest request) {
         Long userId = refreshTokenStore.getUserIdIfValid(request.getRefreshToken())
-                .orElseThrow(() -> new NotFoundException("Invalid refresh token"));
+                .orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
 
         AppUser user = userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException("Invalid refresh token"));
+                .orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
 
         // rotate: revoke old token, issue new token
         refreshTokenStore.revoke(request.getRefreshToken());

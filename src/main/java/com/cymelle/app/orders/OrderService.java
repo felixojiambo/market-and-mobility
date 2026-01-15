@@ -1,16 +1,23 @@
 package com.cymelle.app.orders;
 
+import com.cymelle.app.common.audit.AuditService;
+import com.cymelle.app.common.crypto.Hashing;
 import com.cymelle.app.common.exception.ConflictException;
 import com.cymelle.app.common.exception.NotFoundException;
 import com.cymelle.app.orders.dto.CreateOrderRequest;
 import com.cymelle.app.orders.dto.OrderResponse;
+import com.cymelle.app.orders.dto.PayOrderRequest;
 import com.cymelle.app.orders.dto.UpdateOrderStatusRequest;
 import com.cymelle.app.products.Product;
 import com.cymelle.app.products.ProductRepository;
 import com.cymelle.app.security.CurrentUser;
 import com.cymelle.app.users.AppUser;
+import com.cymelle.app.users.Role;
 import com.cymelle.app.users.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,8 +34,16 @@ public class OrderService {
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
 
+    // NEW
+    private final IdempotencyKeyRepository idempotencyKeyRepository;
+    private final AuditService auditService;
+
     @Transactional
-    public OrderResponse placeOrder(CreateOrderRequest request) {
+    public OrderResponse placeOrder(CreateOrderRequest request, String idempotencyKey) {
+
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new ConflictException("Missing Idempotency-Key header");
+        }
 
         if (request.getItems() == null || request.getItems().isEmpty()) {
             throw new ConflictException("Order items must not be empty");
@@ -37,6 +52,35 @@ public class OrderService {
         Long customerId = CurrentUser.id();
         AppUser customer = userRepository.findById(customerId)
                 .orElseThrow(() -> new NotFoundException("User not found"));
+
+        // Build stable request hash (sorted productId:qty)
+        String canonical = request.getItems().stream()
+                .map(i -> i.getProductId() + ":" + i.getQuantity())
+                .sorted()
+                .reduce((a, b) -> a + "|" + b)
+                .orElse("");
+
+        String requestHash = Hashing.sha256Hex(canonical);
+
+        // 1) Idempotency replay check
+        Optional<IdempotencyKey> existing = idempotencyKeyRepository
+                .findByUserIdAndIdemKey(customerId, idempotencyKey);
+
+        if (existing.isPresent()) {
+            IdempotencyKey record = existing.get();
+
+            if (!record.getRequestHash().equals(requestHash)) {
+                throw new ConflictException("Idempotency-Key reuse with different request payload");
+            }
+
+            Order saved = orderRepository.findById(record.getOrderId())
+                    .orElseThrow(() -> new NotFoundException("Order not found for idempotency key"));
+
+            auditService.log("ORDER_IDEMPOTENT_REPLAY", "ORDER", saved.getId(),
+                    "idemKey=" + idempotencyKey);
+
+            return OrderResponse.from(saved);
+        }
 
         // collect product IDs
         List<Long> productIds = request.getItems().stream()
@@ -57,7 +101,7 @@ public class OrderService {
             }
         }
 
-        // aggregate quantities per product (handles duplicates in request)
+        // aggregate quantities per product
         Map<Long, Integer> qtyByProductId = new HashMap<>();
         request.getItems().forEach(item -> {
             int qty = Optional.ofNullable(item.getQuantity()).orElse(0);
@@ -76,8 +120,7 @@ public class OrderService {
                 throw new ConflictException("Insufficient stock for productId=" + p.getId());
             }
 
-            BigDecimal line = p.getPrice().multiply(BigDecimal.valueOf(requestedQty));
-            total = total.add(line);
+            total = total.add(p.getPrice().multiply(BigDecimal.valueOf(requestedQty)));
         }
 
         // create order
@@ -92,7 +135,6 @@ public class OrderService {
             Product p = productMap.get(e.getKey());
             int requestedQty = e.getValue();
 
-            // deduct stock (safe because locked)
             p.setStockQuantity(p.getStockQuantity() - requestedQty);
 
             OrderItem oi = new OrderItem();
@@ -102,37 +144,46 @@ public class OrderService {
             order.addItem(oi);
         }
 
-        // save order (cascade saves items)
         Order saved = orderRepository.save(order);
+
+        // 2) Save idempotency record AFTER order is created
+        idempotencyKeyRepository.save(
+                IdempotencyKey.builder()
+                        .userId(customerId)
+                        .idemKey(idempotencyKey)
+                        .requestHash(requestHash)
+                        .orderId(saved.getId())
+                        .build()
+        );
+
+        // 3) Audit log
+        auditService.log("ORDER_PLACED", "ORDER", saved.getId(),
+                "total=" + saved.getTotalCost() + ", items=" + saved.getItems().size());
 
         return OrderResponse.from(saved);
     }
+
     public OrderResponse getOrder(Long id) {
         Long actorId = CurrentUser.id();
-        Role actorRole = Role.valueOf(CurrentUser.require().getRole());
+
+        AppUser actor = userRepository.findById(actorId)
+                .orElseThrow(() -> new NotFoundException("User not found"));
 
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Order not found"));
 
-        OrderAuthorization.requireOwnerOrAdmin(order, actorId, actorRole);
+        OrderAuthorization.requireOwnerOrAdmin(order, actor);
         return OrderResponse.from(order);
     }
 
-    /**
-     * GET /api/v1/orders?status=&userId=&page=&size=
-     *
-     * Rules:
-     * - ADMIN: can pass userId and/or status (or neither to list all)
-     * - CUSTOMER: userId is forced to current user, status optional
-     */
     public Page<OrderResponse> searchOrders(Long userId, OrderStatus status, Pageable pageable) {
         Long actorId = CurrentUser.id();
-        Role actorRole = Role.valueOf(CurrentUser.require().getRole());
 
-        // customer cannot query other users: force to self
-        Long effectiveUserId = (actorRole == Role.ADMIN) ? userId : actorId;
+        AppUser actor = userRepository.findById(actorId)
+                .orElseThrow(() -> new NotFoundException("User not found"));
 
-        // If CUSTOMER, effectiveUserId is never null
+        Long effectiveUserId = (actor.getRole() == Role.ADMIN) ? userId : actorId;
+
         if (effectiveUserId != null && status != null) {
             return orderRepository.findByCustomerIdAndStatus(effectiveUserId, status, pageable)
                     .map(OrderResponse::from);
@@ -143,7 +194,6 @@ public class OrderService {
                     .map(OrderResponse::from);
         }
 
-        // only ADMIN reaches below (because customer always has effectiveUserId)
         if (status != null) {
             return orderRepository.findByStatus(status, pageable)
                     .map(OrderResponse::from);
@@ -157,10 +207,46 @@ public class OrderService {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Order not found"));
 
-        OrderStatusTransitions.validate(order.getStatus(), request.getStatus());
+        OrderStatus old = order.getStatus();
+        OrderStatusTransitions.validate(old, request.getStatus());
 
         order.setStatus(request.getStatus());
         orderRepository.save(order);
+
+        auditService.log("ORDER_STATUS_CHANGED", "ORDER", order.getId(),
+                "from=" + old + ", to=" + order.getStatus());
+
+        return OrderResponse.from(order);
+    }
+
+    public OrderResponse payOrder(Long orderId, PayOrderRequest request) {
+        Long actorId = CurrentUser.id();
+
+        AppUser actor = userRepository.findById(actorId)
+                .orElseThrow(() -> new NotFoundException("User not found"));
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NotFoundException("Order not found"));
+
+        OrderAuthorization.requireOwnerOrAdmin(order, actor);
+
+        if (order.getStatus() != OrderStatus.PENDING) {
+            throw new ConflictException("Payment allowed only when order status is PENDING");
+        }
+
+        if (order.getPaymentStatus() == PaymentStatus.PAID) {
+            throw new ConflictException("Order is already PAID");
+        }
+
+        boolean success = (request != null && request.getSuccess() != null)
+                ? request.getSuccess()
+                : (order.getId() % 2 == 0);
+
+        order.setPaymentStatus(success ? PaymentStatus.PAID : PaymentStatus.FAILED);
+        orderRepository.save(order);
+
+        auditService.log("ORDER_PAYMENT", "ORDER", order.getId(),
+                "paymentStatus=" + order.getPaymentStatus());
 
         return OrderResponse.from(order);
     }

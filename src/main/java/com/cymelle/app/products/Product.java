@@ -5,6 +5,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.Builder;
+import lombok.AllArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -20,6 +22,8 @@ import java.time.Instant;
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Builder
 public class Product {
 
     @Id

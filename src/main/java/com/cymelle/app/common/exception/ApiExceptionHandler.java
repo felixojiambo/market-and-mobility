@@ -107,4 +107,19 @@ public class ApiExceptionHandler {
 
         return ResponseEntity.status(status).body(response);
     }
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden(
+            ForbiddenException ex,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ErrorResponse> handleUnauthorized(
+            UnauthorizedException ex,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+    }
+
 }

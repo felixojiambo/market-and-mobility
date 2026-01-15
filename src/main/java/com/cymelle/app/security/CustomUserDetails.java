@@ -15,7 +15,7 @@ public class CustomUserDetails implements UserDetails {
     private final Long id;
     private final String email;
     private final String passwordHash;
-    private final String role;
+    private final String role; // "ADMIN" or "CUSTOMER"
 
     public CustomUserDetails(AppUser user) {
         this.id = user.getId();
