@@ -3,16 +3,21 @@ package com.cymelle.app.auth.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class RegisterRequest {
+
+    @NotBlank(message = "firstName is required")
+    @Size(max = 80, message = "firstName must be <= 80 chars")
+    private String firstName;
+
+    @NotBlank(message = "lastName is required")
+    @Size(max = 80, message = "lastName must be <= 80 chars")
+    private String lastName;
 
     @Email(message = "email must be valid")
     @NotBlank(message = "email is required")

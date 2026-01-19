@@ -32,17 +32,32 @@ public class AuthService {
     @Value("${app.jwt.refresh-expiry-days}")
     private long refreshExpiryDays;
 
-    public AuthResponse register(RegisterRequest request) {
+    public RegisterResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new ConflictException("Email already exists");
         }
 
         String hash = passwordEncoder.encode(request.getPassword());
-        AppUser user = AppUser.create(request.getEmail(), hash, Role.CUSTOMER);
-        userRepository.save(user);
 
-        return issueTokens(user);
+        AppUser user = AppUser.create(
+                request.getEmail(),
+                hash,
+                request.getFirstName(),
+                request.getLastName(),
+                Role.CUSTOMER
+        );
+
+        AppUser saved = userRepository.save(user);
+
+        return RegisterResponse.builder()
+                .id(saved.getId())
+                .email(saved.getEmail())
+                .firstName(saved.getFirstName())
+                .lastName(saved.getLastName())
+                .role(saved.getRole())
+                .build();
     }
+
 
     public AuthResponse login(LoginRequest request) {
         try {
