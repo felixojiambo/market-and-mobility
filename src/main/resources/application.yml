@@ -9,7 +9,7 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       repositories:
-        enabled: false   # ✅ disables Redis repo scanning (removes those warnings)
+        enabled: false   # disables Redis repo scanning
 
 server:
   port: 8080
