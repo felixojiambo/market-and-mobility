@@ -23,6 +23,17 @@ public class RedisRefreshTokenStore {
     private static final String VERSION_PREFIX = "refresh:ver:";
 
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final String USED_PREFIX = "refresh:used:";
+
+    public boolean markUsedOnce(String refreshToken) {
+        // returns true if we successfully marked it as used for the first time
+        Boolean ok = redis.opsForValue().setIfAbsent(USED_PREFIX + refreshToken, "1", Duration.ofMinutes(10));
+        return Boolean.TRUE.equals(ok);
+    }
+
+    public void forgetUsedMarker(String refreshToken) {
+        redis.delete(USED_PREFIX + refreshToken);
+    }
 
     private Duration ttl() {
         return Duration.ofDays(refreshExpiryDays);

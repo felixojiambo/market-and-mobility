@@ -80,17 +80,30 @@ public class AuthService {
     }
 
     public AuthResponse refresh(RefreshRequest request) {
-        Long userId = refreshTokenStore.getUserIdIfValid(request.getRefreshToken())
+        String rt = request.getRefreshToken();
+
+        Long userId = refreshTokenStore.getUserIdIfValid(rt)
                 .orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
+
+        // reuse detection: if token was already "used", it’s suspicious
+        boolean firstUse = refreshTokenStore.markUsedOnce(rt);
+        if (!firstUse) {
+            refreshTokenStore.revokeAllForUser(userId);
+            throw new UnauthorizedException("Refresh token reuse detected. Logged out everywhere.");
+        }
 
         AppUser user = userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
 
-        // rotate: revoke old token, issue new token
-        refreshTokenStore.revoke(request.getRefreshToken());
+        // rotate
+        refreshTokenStore.revoke(rt);
+
+        // optional cleanup (not required)
+        refreshTokenStore.forgetUsedMarker(rt);
 
         return issueTokens(user);
     }
+
 
     private AuthResponse issueTokens(AppUser user) {
         String accessToken = jwtService.generateAccessToken(user.getId(), user.getRole());
