@@ -24,20 +24,20 @@ public class RedisRefreshTokenStore {
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
+    private Duration ttl() {
+        return Duration.ofDays(refreshExpiryDays);
+    }
+
     /**
      * Issue a new opaque refresh token.
-     * Stored as: token -> "userId:version"
+     * Stored as: refresh:<token> -> "userId:version" with TTL.
      */
     public String issue(Long userId) {
         int version = getOrInitVersion(userId);
         String token = generateToken();
 
         String value = userId + ":" + version;
-        redis.opsForValue().set(
-                TOKEN_PREFIX + token,
-                value,
-                Duration.ofDays(refreshExpiryDays)
-        );
+        redis.opsForValue().set(TOKEN_PREFIX + token, value, ttl());
 
         return token;
     }
@@ -74,24 +74,37 @@ public class RedisRefreshTokenStore {
 
     /**
      * Revoke ALL refresh tokens for a user (logout everywhere).
+     * Implementation: increment version so all existing tokens become invalid.
+     * Also refresh TTL to keep it tidy.
      */
     public void revokeAllForUser(Long userId) {
-        redis.opsForValue().increment(VERSION_PREFIX + userId);
+        String key = VERSION_PREFIX + userId;
+        redis.opsForValue().increment(key);
+        redis.expire(key, ttl());
     }
 
     private int getOrInitVersion(Long userId) {
         String key = VERSION_PREFIX + userId;
-        String value = redis.opsForValue().get(key);
 
+        // setIfAbsent prevents race conditions on first init
+        Boolean created = redis.opsForValue().setIfAbsent(key, "1", ttl());
+        if (Boolean.TRUE.equals(created)) {
+            return 1;
+        }
+
+        // already exists: parse it
+        String value = redis.opsForValue().get(key);
         if (value == null) {
-            redis.opsForValue().set(key, "1");
+            // very rare edge: expired between calls, recreate
+            redis.opsForValue().set(key, "1", ttl());
             return 1;
         }
 
         try {
             return Integer.parseInt(value);
         } catch (NumberFormatException e) {
-            redis.opsForValue().set(key, "1");
+            // repair corrupt value
+            redis.opsForValue().set(key, "1", ttl());
             return 1;
         }
     }
