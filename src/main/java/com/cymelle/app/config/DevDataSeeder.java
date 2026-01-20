@@ -8,7 +8,9 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Component
 @Profile("dev")
 @RequiredArgsConstructor
@@ -21,8 +23,10 @@ public class DevDataSeeder implements CommandLineRunner {
     public void run(String... args) {
         String email = "admin@zep.com";
 
-        if (userRepository.existsByEmail(email)) return;
-
+        if (userRepository.existsByEmail(email)) {
+            log.info("Dev seed: admin already exists: {}", email);
+            return;
+        }
         AppUser admin = AppUser.create(
                 email,
                 passwordEncoder.encode("Admin@123"),
@@ -32,5 +36,6 @@ public class DevDataSeeder implements CommandLineRunner {
         );
 
         userRepository.save(admin);
+        log.info("Dev seed: created admin user: {}", email);
     }
 }
