@@ -19,7 +19,7 @@ public class DevDataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        String email = "admin@cymelle.com";
+        String email = "admin@zep.com";
 
         if (userRepository.existsByEmail(email)) return;
 
